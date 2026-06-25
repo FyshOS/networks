@@ -1,0 +1,11 @@
+[Details]
+Icon = "Icon.png"
+Name = "Networks"
+ID = "com.fyshos.networks"
+Build = 0
+
+[Migrations]
+fyneDo = true
+
+[LinuxAndBSD]
+Categories = ["System"]
