@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -46,8 +47,10 @@ type Networks struct {
 	handlePassword func(string) string
 
 	ctl            *iwd.Iwd
-	nets           []*iwd.OrderedNetwork
 	selectedDevice string
+
+	mu   sync.Mutex // guards nets
+	nets []*iwd.OrderedNetwork
 
 	signalIcons []fyne.Resource
 	lockIcon    fyne.Resource
@@ -73,12 +76,34 @@ func New(conn *dbus.Conn, handlePass func(string) string, handleErr func(error))
 	n.loadIcons()
 	n.registerAgent()
 	n.buildUI()
+
+	if n.selectedDevice != "" {
+		// Populate immediately from iwd's current knowledge so Menu works right
+		// away, then trigger a fresh scan in the background. This happens here
+		// (not only when the widget is shown) so the menu is usable standalone.
+		n.refreshNets()
+		go n.Scan()
+	}
 	return n, nil
 }
 
 // CreateRenderer implements fyne.Widget.
 func (n *Networks) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(n.content)
+}
+
+// Menu returns the current networks as a fyne.Menu immediately and kicks off
+// a background scan. When the scan completes, onUpdate is called with the new menu.
+func (n *Networks) Menu(onUpdate func(*fyne.Menu)) *fyne.Menu {
+	if onUpdate != nil {
+		go func() {
+			n.Scan()
+			fyne.Do(func() {
+				onUpdate(n.buildMenu())
+			})
+		}()
+	}
+	return n.buildMenu()
 }
 
 // loadIcons reads the embedded wifi-strength icons (weakest to strongest) and
@@ -116,15 +141,19 @@ func (n *Networks) buildUI() {
 	// as status - a checkmark on the connected network, otherwise a lock on
 	// secured networks - followed by the SSID and the signal strength (right).
 	n.netList = widget.NewList(func() int {
-		return len(n.nets)
+		return len(n.getNets())
 	}, func() fyne.CanvasObject {
 		return container.NewBorder(nil, nil,
 			widget.NewIcon(nil),
 			widget.NewIcon(nil),
 			widget.NewLabel(""))
 	}, func(id widget.ListItemID, o fyne.CanvasObject) {
+		nets := n.getNets()
+		if id >= len(nets) {
+			return
+		}
 		c := o.(*fyne.Container)
-		net := n.nets[id]
+		net := nets[id]
 		c.Objects[0].(*widget.Label).SetText(net.Name)
 
 		status := c.Objects[1].(*widget.Icon)
@@ -141,7 +170,7 @@ func (n *Networks) buildUI() {
 	})
 	n.netList.OnSelected = n.onNetworkSelected
 
-	n.refresh = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { go n.scan() })
+	n.refresh = widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { go n.Scan() })
 	n.refresh.Disable()
 
 	// devs lists the wireless interfaces (devices backed by a station); these are
@@ -160,11 +189,13 @@ func (n *Networks) buildUI() {
 		n.selectedDevice = name
 		n.refresh.Enable()
 		n.refreshNets()
-		go n.scan()
+		go n.Scan()
 	})
 	n.deviceSelect.PlaceHolder = "(no wireless adapters)"
 	if len(devs) > 0 {
-		n.deviceSelect.SetSelected(devs[0]) // primary device by default
+		n.selectedDevice = devs[0]
+		n.deviceSelect.Selected = devs[0]
+		n.refresh.Enable()
 	}
 
 	top := container.NewBorder(nil, nil, widget.NewIcon(theme.ComputerIcon()), n.refresh, n.deviceSelect)
@@ -174,11 +205,30 @@ func (n *Networks) buildUI() {
 // onNetworkSelected connects to the tapped network.
 func (n *Networks) onNetworkSelected(id widget.ListItemID) {
 	n.netList.Unselect(id)
-	if id >= len(n.nets) {
+	nets := n.getNets()
+	if id >= len(nets) {
 		return
 	}
-	net := n.nets[id]
+	n.connect(nets[id])
+}
 
+// buildMenu builds a menu from the currently known networks.
+func (n *Networks) buildMenu() *fyne.Menu {
+	nets := n.getNets()
+	items := make([]*fyne.MenuItem, 0, len(nets))
+	for _, net := range nets {
+		net := net // capture per-iteration network for the closure
+		item := fyne.NewMenuItem(net.Name, func() { n.connect(net) })
+		item.Icon = n.signalIcons[signalLevel(net.SignalStrength)]
+		item.Checked = net.Connected
+		items = append(items, item)
+	}
+	return fyne.NewMenu("", items...)
+}
+
+// connect starts a connection to net in the background, prompting for a
+// passphrase if required and reporting any failure through the error handler.
+func (n *Networks) connect(net *iwd.OrderedNetwork) {
 	// Connect blocks while iwd negotiates (and potentially gets auth).
 	go func() {
 		if !getPermission(networkAction) {
@@ -188,7 +238,7 @@ func (n *Networks) onNetworkSelected(id widget.ListItemID) {
 		if err := net.Connect(n.conn); err != nil {
 			n.handleError(connectError(err))
 		}
-		n.refreshNets()
+		fyne.Do(n.refreshNets)
 	}()
 }
 
@@ -198,11 +248,11 @@ func (n *Networks) refreshNets() {
 	if newCtl, err := iwd.New(n.conn); err == nil {
 		n.ctl = newCtl
 	}
-	n.nets = nil
+	var nets []*iwd.OrderedNetwork
 	st := stationFor(n.ctl, n.selectedDevice)
 	if st != nil {
 		if ordered, err := st.GetOrderedNetworks(n.conn); err == nil {
-			n.nets = ordered
+			nets = ordered
 		} else {
 			log.Println("ordered networks err", err)
 		}
@@ -211,30 +261,49 @@ func (n *Networks) refreshNets() {
 	addr := "(not connected)"
 	if st != nil && st.ConnectedNetwork != nil {
 		cp := *st.ConnectedNetwork
-		for _, net := range n.nets {
+		for _, net := range nets {
 			if net.Path == cp {
 				addr = net.Name
 			}
 		}
 	}
-	n.connected.SetText(addr)
-	n.netList.Refresh()
+
+	n.mu.Lock()
+	n.nets = nets
+	n.mu.Unlock()
+
+	fyne.Do(func() {
+		// Refresh outside the lock: netList.Refresh re-enters via getNets.
+		n.connected.SetText(addr)
+		n.netList.Refresh()
+	})
 }
 
-// scan triggers a wireless scan on the selected adapter, waits for it to finish
-// (with a timeout), then refreshes the network list.
-func (n *Networks) scan() {
+// getNets returns the current network list under lock. Callers iterate or index
+// the returned slice (a stable header); refreshNets only ever replaces the slice
+// wholesale, never mutates it in place, so the snapshot stays valid.
+func (n *Networks) getNets() []*iwd.OrderedNetwork {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.nets
+}
+
+// Scan triggers a wireless scan on the selected adapter, blocks until it
+// finishes (or times out after ~9s), then refreshes the network list.
+// The Menu call also uses this refreshed cache.
+func (n *Networks) Scan() error {
 	st := stationFor(n.ctl, n.selectedDevice)
 	if st == nil {
-		return
+		return nil
 	}
-	if err := st.Scan(n.conn); err != nil {
+	err := st.Scan(n.conn)
+	if err != nil {
 		log.Println("scan err", err)
 	}
 	// Poll fresh state until the station reports it has stopped scanning.
 	for i := 0; i < 30; i++ {
-		lc, err := iwd.New(n.conn)
-		if err != nil {
+		lc, e := iwd.New(n.conn)
+		if e != nil {
 			break
 		}
 		cur := stationFor(lc, n.selectedDevice)
@@ -244,12 +313,13 @@ func (n *Networks) scan() {
 		time.Sleep(300 * time.Millisecond)
 	}
 	n.refreshNets()
+	return err
 }
 
 // askPassphrase ask the user for a password to the network specified.
 func (n *Networks) askPassphrase(network dbus.ObjectPath) (string, *dbus.Error) {
 	name := "this network"
-	for _, net := range n.nets {
+	for _, net := range n.getNets() {
 		if net.Path == network {
 			name = net.Name
 			break
