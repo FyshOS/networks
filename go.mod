@@ -5,7 +5,7 @@ go 1.19
 require (
 	fyne.io/fyne/v2 v2.7.4
 	github.com/amenzhinsky/go-polkit v0.0.0-20210519083301-ee6a51849123
-	github.com/godbus/dbus/v5 v5.2.2
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/joeflateau/go-iwd v0.0.0-20240409133838-1f3ac7d42dc5
 )
 
