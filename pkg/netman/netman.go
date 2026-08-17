@@ -19,7 +19,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/amenzhinsky/go-polkit"
 	"github.com/godbus/dbus/v5"
 	"github.com/joeflateau/go-iwd"
 )
@@ -29,9 +28,6 @@ var signalSVGs embed.FS
 
 //go:embed img/wifi-lock.svg
 var lockSVG []byte
-
-// networkAction is the polkit action we check before attempting a connection.
-const networkAction = "org.freedesktop.NetworkManager.network-control"
 
 // agentPath is the D-Bus object path we expose our credentials agent on so that
 // iwd can call back to us when a network needs a passphrase.
@@ -231,10 +227,7 @@ func (n *Networks) buildMenu() *fyne.Menu {
 func (n *Networks) connect(net *iwd.OrderedNetwork) {
 	// Connect blocks while iwd negotiates (and potentially gets auth).
 	go func() {
-		if !getPermission(networkAction) {
-			n.handleError(fmt.Errorf("not authorized to manage network connections"))
-			return
-		}
+		// Access is enforced by iwd's own D-Bus policy, so this may cause permission error.
 		if err := net.Connect(n.conn); err != nil {
 			n.handleError(connectError(err))
 		}
@@ -350,26 +343,6 @@ func connectError(err error) error {
 		}
 	}
 	return err
-}
-
-// getPermission asks polkit whether the current user may manage network
-// connections, prompting them to authenticate if needed.
-func getPermission(id string) bool {
-	authority, err := polkit.NewAuthority()
-	if err != nil {
-		log.Println("polkit unavailable, skipping authorization check:", err)
-		return true
-	}
-	defer authority.Close()
-
-	res, err := authority.CheckAuthorization(id, nil,
-		polkit.CheckAuthorizationAllowUserInteraction, "networks-connect")
-	if err != nil {
-		fyne.LogError("Failed to check authorization", err)
-		return true
-	}
-
-	return res.IsAuthorized
 }
 
 // signalLevel maps an iwd signal strength (reported in units of 100 * dBm) onto

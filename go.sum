@@ -6,8 +6,6 @@ github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/FyshOS/go-iwd v0.0.0-20260303202652-34290b8690c5 h1:Kw+xmuEu3V/QMwtvWuErZnufuza3ZVgpMki5Zruny9I=
 github.com/FyshOS/go-iwd v0.0.0-20260303202652-34290b8690c5/go.mod h1:4I0mfrVvxj7labUhhbS4EYZb5c1nQV3YM092CcIfyFI=
-github.com/amenzhinsky/go-polkit v0.0.0-20210519083301-ee6a51849123 h1:VdNhe94PF9yn6KudYnpcBb6bH7l+wsEy9yn6Ulm1/j8=
-github.com/amenzhinsky/go-polkit v0.0.0-20210519083301-ee6a51849123/go.mod h1:CdMR3dsiNi5M2BbtFlMo85mRbNt6LiMw04UBzJmoVEU=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -33,7 +31,6 @@ github.com/go-text/render v0.2.1/go.mod h1:HCCAq8MUlm/WRcXshBb4K/n+IkjeXQ1c2Ba+y
 github.com/go-text/typesetting v0.3.4 h1:YYurUOtEb9kGSOz4uE3k4OpBGsp1dDL8+fjCeaFamAU=
 github.com/go-text/typesetting v0.3.4/go.mod h1:4qZCQphq4KSgGTAeI0uMEkVbROgfah8BuyF5LRYr7XY=
 github.com/go-text/typesetting-utils v0.0.0-20260223113751-2d88ac90dae3 h1:drBZzMgdYPbmyXqOto4YhhJGrFIQCX94FpR4MzTCsos=
-github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/godbus/dbus/v5 v5.1.0 h1:4KLkAxT3aOY8Li4FRJe/KvhoNFFxo0m6fNuFUO8QJUk=
 github.com/godbus/dbus/v5 v5.1.0/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
 github.com/google/pprof v0.0.0-20211214055906-6f57359322fd h1:1FjCyPC+syAzJ5/2S8fqdZK1R22vvA0J7JZKcuOIQ7Y=
