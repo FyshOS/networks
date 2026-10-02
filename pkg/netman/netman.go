@@ -285,6 +285,10 @@ func (n *Networks) getNets() []*iwd.OrderedNetwork {
 // finishes (or times out after ~9s), then refreshes the network list.
 // The Menu call also uses this refreshed cache.
 func (n *Networks) Scan() error {
+	// Re-read iwd before looking for the station, in case it's a snapshot from airplane mode etc.
+	if cur, err := iwd.New(n.conn); err == nil {
+		n.ctl = cur
+	}
 	st := stationFor(n.ctl, n.selectedDevice)
 	if st == nil {
 		return nil
